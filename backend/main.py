@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import os
 from dotenv import load_dotenv
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
 # Load environment variables (from .env inside backend/)
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), ".env"))
