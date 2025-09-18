@@ -57,13 +57,13 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # Check if model file exists
-if (!(Test-Path "crop_price_model_2.pkl")) {
-    Write-Host "⚠️ Warning: Model file 'crop_price_model_2.pkl' not found!" -ForegroundColor Yellow
+if (!(Test-Path "crop_price_model.pkl")) {
+    Write-Host "⚠️ Warning: Model file 'crop_price_model.pkl' not found!" -ForegroundColor Yellow
     Write-Host "Please ensure your trained model is in this directory." -ForegroundColor Yellow
     Write-Host "The server will still start but predictions may not work." -ForegroundColor Yellow
     Read-Host "Press Enter to continue anyway"
 } else {
-    Write-Host "✅ Model file found: crop_price_model_2.pkl" -ForegroundColor Green
+    Write-Host "✅ Model file found: crop_price_model.pkl" -ForegroundColor Green
 }
 
 # Start the server

@@ -95,7 +95,7 @@ async def startup_event():
     print(f"📁 Working directory: {current_dir}")
     
     # Check if model file exists
-    model_path = os.path.join(current_dir, "crop_price_model_2.pkl")
+    model_path = os.path.join(current_dir, "crop_price_model.pkl")
     if os.path.exists(model_path):
         print(f"✅ Model file found: {model_path}")
         app.state.model_loaded = True

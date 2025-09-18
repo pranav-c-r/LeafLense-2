@@ -2,50 +2,38 @@
 
 import os
 import pickle
-import numpy as np
-import pandas as pd
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from huggingface_hub import hf_hub_download
-from fastapi.middleware.cors import CORSMiddleware
+import pandas as pd
+import numpy as np
+from typing import List
 
-# --- 1. Initialize FastAPI app ---
+# --- 1. Initialize FastAPI Router ---
 router = APIRouter()
 
-# --- 2. Load The Trained Models ---
+from .utils import download_models_from_hf
 
-# Get the absolute path of the directory where this script is located
-script_dir = os.path.dirname(os.path.abspath(__file__))
-recommend_model_path = hf_hub_download(
-    repo_id="adityaarun1010/my-new-models",
-    filename="crop_recommend_model.pkl"
-)
+# --- 2. Load Models ---
+# Define the directory where models are saved
+MODEL_DIR = os.path.join(os.path.dirname(__file__), "saved_models")
+RECOMMEND_MODEL_PATH = os.path.join(MODEL_DIR, "crop_recommend_model.pkl")
+YIELD_MODEL_PATH = os.path.join(MODEL_DIR, "crop_yield_model.pkl")
 
+recommend_model = None
+yield_model_pipeline = None
 
-yield_model_path = hf_hub_download(
-    repo_id="adityaarun1010/my-new-models",
-    filename="crop_yield_model.pkl"
-)
-
+download_models_from_hf()
 
 try:
-    def load_and_use_model():
-        with open("your_model.pkl", "rb") as file:
-            model = pickle.load(file)
-    # use model here in this function only
-
-    print("✅ Crop recommendation model loaded successfully.")
-except FileNotFoundError:
-    print(f"❌ Error: Recommendation model not found at {recommend_model_path}")
-    recommend_model = None
-
-try:
-    with open(yield_model_path, 'rb') as file:
+    with open(RECOMMEND_MODEL_PATH, 'rb') as file:
+        recommend_model = pickle.load(file)
+    with open(YIELD_MODEL_PATH, 'rb') as file:
         yield_model_pipeline = pickle.load(file)
-    print("✅ Crop yield prediction model loaded successfully.")
+    print("Models loaded successfully!")
 except FileNotFoundError:
-    print(f"❌ Error: Yield model not found at {yield_model_path}")
-    yield_model_pipeline = None
+    print(f"Error: Model files not found in {MODEL_DIR}. Please ensure 'yield-final.py' has been run to train and save the models.")
+except Exception as e:
+    print(f"Error loading models: {e}")
 
 # --- 3. Define the Input Data Model using Pydantic ---
 # This ensures that the data sent from the frontend matches what the model expects.
@@ -65,37 +53,32 @@ class CropInput(BaseModel):
 # --- 4. Create the Prediction Endpoint ---
 @router.post("/predict-yield")
 async def predict_yield(data: CropInput):
-    if not recommend_model or not yield_model_pipeline:
-        return {"error": "Models are not loaded. Please check server logs."}
+    if recommend_model is None or yield_model_pipeline is None:
+        raise HTTPException(status_code=500, detail="Models are not loaded. Please check server logs for details.")
 
-    try:
-        # Part A: Predict Crop Recommendation
-        recommend_features_df = pd.DataFrame(
-            [[data.N, data.P, data.K, data.temperature, data.humidity, data.ph, data.rainfall]],
-            columns=['N', 'P', 'K', 'temperature', 'humidity', 'ph', 'rainfall']
-        )
-        recommended_crop = recommend_model.predict(recommend_features_df)[0]
-
-        # Part B: Predict Yield for the Recommended Crop
-        yield_features_df = pd.DataFrame({
-            'State_Name': [data.State_Name],
-            'District_Name': [data.District_Name],
-            'Crop_Year': [data.Crop_Year],
-            'Season': [data.Season],
-            'Crop': [recommended_crop]
-        })
-        
-        predicted_log_yield = yield_model_pipeline.predict(yield_features_df)
-        # Extract the float value from the numpy array
-        predicted_yield = np.expm1(predicted_log_yield)
-
-        # Return the results as JSON
-        return {
-            "recommended_crop": recommended_crop.upper(),
-            "predicted_yield": f"{predicted_yield[0]:.2f}"
-        }
-    except Exception as e:
-        return {"error": f"An error occurred during prediction: {str(e)}"}
+    # 1. Recommend the best crop
+    recommend_features_df = pd.DataFrame([[data.N, data.P, data.K, data.temperature, data.humidity, data.ph, data.rainfall]],
+                                         columns=['N', 'P', 'K', 'temperature', 'humidity', 'ph', 'rainfall'])
+    recommended_crop = recommend_model.predict(recommend_features_df)[0]
+    
+    # 2. Predict the yield for the recommended crop
+    yield_features = pd.DataFrame({
+        'State_Name': [data.State_Name],
+        'District_Name': [data.District_Name],
+        'Crop_Year': [data.Crop_Year],
+        'Season': [data.Season],
+        'Crop': [recommended_crop]
+    })
+    
+    predicted_log_yield = yield_model_pipeline.predict(yield_features)
+    
+    # Convert the prediction back to the original scale
+    predicted_yield_value = np.expm1(predicted_log_yield)
+    
+    return {
+        "recommended_crop": recommended_crop,
+        "predicted_yield": round(float(predicted_yield_value[0]), 2)
+    }
 
 # --- 5. Root endpoint for testing ---
 @router.get("/")
