@@ -1,7 +1,7 @@
 {
   "dependencies": {
     "@periskope/whatsapp-mcp": "^0.1.8",
-    "firebase": "^12.1.0",
+    "firebase": "^12.2.1",
     "leaflet": "^1.9.4",
     "react-leaflet": "^5.0.0",
     "workbox-window": "^7.3.0",
