@@ -72,7 +72,7 @@ const translations = {
     cropProfitability: 'Calculate crop profitability',
     
     // App Title
-    appTitle: 'AI Agri-Advisor',
+    appTitle: 'LeafLense',
     appSubtitle: 'Smart Agriculture Assistant',
     
     // Dashboard

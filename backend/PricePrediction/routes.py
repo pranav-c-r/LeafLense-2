@@ -1,62 +1,16 @@
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import JSONResponse
-import joblib
-import pandas as pd
+from fastapi import APIRouter
 from pydantic import BaseModel
-import os
+import pandas as pd
+import numpy as np
+import joblib
+from huggingface_hub import hf_hub_download
 
-# ✅ Router for Price Prediction
-router = APIRouter(prefix="/price", tags=["Price Prediction"])
+# --- Router and Pydantic Model Definition ---
 
-# ✅ Path to trained model
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-MODEL_PATH = os.path.join(BASE_DIR, "crop_price_model_2.pkl")  # Look for model in same directory
-MODEL_PATH_FALLBACK = os.path.join(BASE_DIR, "models", "crop_price_model_2.pkl")  # Fallback in models subdirectory
+router = APIRouter(
+    tags=["Price Prediction"],
+)
 
-# ✅ Load model with fallback
-model = None
-model_loaded = False
-
-for path in [MODEL_PATH, MODEL_PATH_FALLBACK]:
-    try:
-        if os.path.exists(path):
-            print(f"\n🔄 Loading price prediction model from: {path}")
-            model = joblib.load(path)
-            print("\n✅ Price prediction model loaded successfully")
-            model_loaded = True
-            break
-    except Exception as e:
-        print(f"\n❌ Failed to load price prediction model from {path}: {e}")
-        continue
-
-if not model_loaded:
-    print(f"\n⚠️  No price prediction model found. Checked paths:")
-    print(f"   - {MODEL_PATH}")
-    print(f"   - {MODEL_PATH_FALLBACK}")
-    print(f"\n📝 To enable predictions, place your trained model file at one of these locations.")
-    print(f"\n🔧 Creating mock model for development/testing...")
-    
-    # Create a simple mock model for development/testing
-    class MockPricePredictionModel:
-        def predict(self, df):
-            # Return a mock prediction based on input data
-            import numpy as np
-            np.random.seed(42)  # For consistent results
-            # Generate a reasonable price prediction between min and max
-            if 'avg_min_price' in df.columns and 'avg_max_price' in df.columns:
-                avg_min = df['avg_min_price'].iloc[0] if len(df) > 0 else 1000
-                avg_max = df['avg_max_price'].iloc[0] if len(df) > 0 else 1500
-                # Predict a price within the range with some variation
-                predicted_price = np.random.uniform(avg_min * 0.95, avg_max * 1.05)
-            else:
-                predicted_price = np.random.uniform(1000, 2000)
-            return [predicted_price]
-    
-    model = MockPricePredictionModel()
-    model_loaded = "mock"
-    print("\n✅ Mock price prediction model created for development.")
-
-# Input schema for request body
 class CropPriceData(BaseModel):
     month: str
     commodity_name: str
@@ -67,77 +21,72 @@ class CropPriceData(BaseModel):
     calculationType: str
     change: float
 
-@router.get("/")
-def price_prediction_status():
-    """Get price prediction service status"""
-    return {
-        "status": "active",
-        "service": "Crop Price Prediction",
-        "version": "1.0.0",
-        "model_loaded": model is not None,
-        "model_type": model_loaded if model_loaded else "none",
-        "note": "Using mock model for demonstration" if model_loaded == "mock" else "Production model loaded" if model_loaded else "No model available"
-    }
+# --- Model Loading from Hugging Face Hub ---
+
+model = None
+model_loaded = False
+REPO_ID = "adityaarun1010/my-new-models"
+FILENAME = "crop_price_model.pkl"
+
+try:
+    print(f"Attempting to load model from Hugging Face repo: {REPO_ID}, filename: {FILENAME}")
+    # Download the model from the Hub
+    model_path = hf_hub_download(repo_id=REPO_ID, filename=FILENAME)
+    # Load the model using joblib
+    model = joblib.load(model_path)
+    model_loaded = True
+    print(f"✅ Price prediction model loaded successfully from {model_path}!")
+
+except Exception as e:
+    print(f"❌ Failed to load model from Hugging Face: {e}")
+    print("⚠️ Warning: Creating a mock model for development/testing purposes.")
+    # Define a mock model as a fallback
+    class MockPricePredictionModel:
+        def predict(self, df):
+            avg_min = df['avg_min_price'].iloc[0]
+            avg_max = df['avg_max_price'].iloc[0]
+            # Return a random prediction within a reasonable range
+            return [np.random.uniform(avg_min * 0.95, avg_max * 1.05)]
+    model = MockPricePredictionModel()
+    model_loaded = "mock"
+
+
+# --- Helper Data ---
+
+MONTH_MAP = {
+    'January': 1, 'February': 2, 'March': 3, 'April': 4, 'May': 5, 'June': 6,
+    'July': 7, 'August': 8, 'September': 9, 'October': 10, 'November': 11, 'December': 12
+}
+
+# --- API Endpoints ---
 
 @router.post("/predict")
 def predict_price(data: CropPriceData):
-    """Predict crop price based on input data"""
     if model is None:
-        return {"error": "Price prediction model not loaded"}
-    
+        return {"error": "Price prediction model is not available.", "status": "error"}
+
     try:
-        # Convert input to DataFrame (model expects same features as training)
-        df = pd.DataFrame([data.dict()])
+        # 1. Convert incoming data to a DataFrame
+        input_df = pd.DataFrame([data.dict()])
+
+        # 2. Preprocess the data to create required features
+        input_df['month_num'] = input_df['month'].map(MONTH_MAP)
+        input_df['month_sin'] = np.sin(2 * np.pi * input_df['month_num'] / 12)
+        input_df['month_cos'] = np.cos(2 * np.pi * input_df['month_num'] / 12)
+        input_df['price_range'] = input_df['avg_max_price'] - input_df['avg_min_price']
+        input_df['prev_modal_by_commodity'] = (input_df['avg_min_price'] + input_df['avg_max_price']) / 2
         
-        # Predict
-        pred = model.predict(df)[0]
-        
+        # 3. Make the prediction
+        # Ensure your model is robust to column order or reorder them explicitly if needed
+        pred = model.predict(input_df)[0]
+
         return {
             "predicted_price": float(pred),
             "status": "success",
-            "input_data": data.dict()
+            "model_source": "Hugging Face" if model_loaded == True else "Mock Fallback"
         }
     except Exception as e:
-        return {
-            "error": f"Prediction failed: {str(e)}",
-            "status": "error"
-        }
+        print(f"An error occurred during prediction: {e}")
+        return {"error": f"Prediction failed: {e}", "status": "error"}
 
-@router.get("/commodities")
-def get_supported_commodities():
-    """Get list of supported commodities"""
-    # Common commodities that the model might support
-    commodities = [
-        "Rice", "Wheat", "Maize", "Sugarcane", "Cotton", "Groundnut",
-        "Soybean", "Turmeric", "Coriander", "Chili", "Onion", "Potato",
-        "Tomato", "Banana", "Mango", "Orange", "Apple", "Grapes",
-        "Tea", "Coffee", "Rubber", "Coconut", "Areca nut", "Cardamom",
-        "Black pepper", "Ginger", "Garlic", "Lemon", "Jowar", "Bajra",
-        "Ragi", "Barley", "Gram", "Tur", "Moong", "Urad", "Linseed",
-        "Castor seed", "Sesamum", "Safflower", "Nigerseed", "Sunflower"
-    ]
-    
-    return {
-        "commodities": sorted(commodities),
-        "count": len(commodities),
-        "status": "success"
-    }
-
-@router.get("/states")
-def get_supported_states():
-    """Get list of supported Indian states"""
-    states = [
-        "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
-        "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
-        "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya",
-        "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim",
-        "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand",
-        "West Bengal", "Delhi", "Chandigarh", "Dadra and Nagar Haveli",
-        "Daman and Diu", "Lakshadweep", "Puducherry"
-    ]
-    
-    return {
-        "states": sorted(states),
-        "count": len(states),
-        "status": "success"
-    }
+# You can keep other endpoints like get_supported_commodities, etc.

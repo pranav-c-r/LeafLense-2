@@ -98,7 +98,7 @@ const Dashboard = () => {
             </div>
             <div>
               <h1 className="text-4xl font-bold text-gradient mb-2">
-                Welcome to AI Agri-Advisor
+                Welcome to LeafLense
               </h1>
               <p className="text-lg text-gray-300">
                 Smart agriculture powered by artificial intelligence

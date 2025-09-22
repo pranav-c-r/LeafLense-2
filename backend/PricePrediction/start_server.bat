@@ -28,8 +28,8 @@ echo 📥 Installing/updating dependencies...
 pip install -r requirements.txt
 
 REM Check if model file exists
-if not exist "crop_price_model_2.pkl" (
-    echo ⚠️  Warning: Model file 'crop_price_model_2.pkl' not found!
+if not exist "crop_price_model.pkl" (
+    echo ⚠️  Warning: Model file 'crop_price_model.pkl' not found!
     echo Please ensure your trained model is in this directory.
     echo The server will still start but predictions may not work.
     pause
