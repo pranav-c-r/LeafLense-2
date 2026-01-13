@@ -48,9 +48,10 @@ sortedcontainers==2.4.0
 soupsieve==2.5
 trio==0.23.1
 trio-websocket==0.11.1
-urllib3==2.0.7
+urllib3==2.6.3
 wcwidth==0.2.9
 werkzeug==3.0.1
 wsproto==1.2.0
 zipp==3.17.0
 gunicorn==20.1.0
+filelock>=3.20.3 # not directly required, pinned by Snyk to avoid a vulnerability
