@@ -12,7 +12,7 @@ numpy>=1.24.0
 
 # API and HTTP utilities
 pydantic>=2.4.0
-python-multipart>=0.0.6
+python-multipart>=0.0.22
 
 # Development and monitoring
 python-dotenv>=1.0.0
